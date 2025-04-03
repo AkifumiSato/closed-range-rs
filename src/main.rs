@@ -24,7 +24,7 @@ fn main() {
         }
     };
     match ClosedRange::new(lower, upper) {
-        Ok(range) => println!("{}", range),
+        Ok(range) => println!("range: {}", range),
         Err(e) => {
             eprintln!("Error: {}", e);
             process::exit(1);
@@ -49,10 +49,6 @@ impl ClosedRange {
         value >= self.lower && value <= self.upper
     }
 
-    fn is_equal(&self, other: &ClosedRange) -> bool {
-        self.lower == other.lower && self.upper == other.upper
-    }
-
     fn is_subset(&self, other: &ClosedRange) -> bool {
         self.lower >= other.lower && self.upper <= other.upper
     }
@@ -64,20 +60,30 @@ impl fmt::Display for ClosedRange {
     }
 }
 
+impl PartialEq for ClosedRange {
+    fn eq(&self, other: &Self) -> bool {
+        self.lower == other.lower && self.upper == other.upper
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_init() {
+        // Act
         let range = ClosedRange::new(1, 10).unwrap();
+        // Assert
         assert_eq!(range.lower, 1);
         assert_eq!(range.upper, 10);
     }
 
     #[test]
     fn test_init_error() {
+        // Act
         let result = ClosedRange::new(10, 1);
+        // Assert
         assert!(result.is_err());
         let message = result.err().unwrap();
         assert_eq!(message, "Lower bound cannot be greater than upper bound");
@@ -85,7 +91,9 @@ mod tests {
 
     #[test]
     fn test_contains() {
+        // Act
         let range = ClosedRange::new(1, 10).unwrap();
+        // Assert
         assert!(range.contains(1));
         assert!(range.contains(5));
         assert!(range.contains(10));
@@ -95,25 +103,47 @@ mod tests {
 
     #[test]
     fn test_is_equal() {
+        // Arrange
         let range1 = ClosedRange::new(1, 10).unwrap();
         let range2 = ClosedRange::new(1, 10).unwrap();
-        let range3 = ClosedRange::new(2, 10).unwrap();
-        assert!(range1.is_equal(&range2));
-        assert!(!range1.is_equal(&range3));
+        // Act & Assert
+        assert!(range1 == range2);
+    }
+
+    #[test]
+    fn test_is_not_equal() {
+        // Arrange
+        let range1 = ClosedRange::new(1, 10).unwrap();
+        let range2 = ClosedRange::new(1, 11).unwrap();
+        // Act & Assert
+        assert!(range1 != range2);
     }
 
     #[test]
     fn test_is_subset() {
+        // Arrange
         let range1 = ClosedRange::new(1, 10).unwrap();
         let range2 = ClosedRange::new(1, 20).unwrap();
-        let range3 = ClosedRange::new(5, 8).unwrap();
+        // Act & Assert
         assert!(range1.is_subset(&range2));
-        assert!(!range1.is_subset(&range3));
+    }
+
+    #[test]
+    fn test_is_not_subset() {
+        // Arrange
+        let range1 = ClosedRange::new(1, 10).unwrap();
+        let range2 = ClosedRange::new(5, 15).unwrap();
+        // Act & Assert
+        assert!(!range1.is_subset(&range2));
     }
 
     #[test]
     fn test_display() {
+        // Arrange
         let range = ClosedRange::new(1, 10).unwrap();
-        assert_eq!(format!("{}", range), "[1, 10]");
+        // Act
+        let output = format!("{}", range);
+        // Assert
+        assert_eq!(output, "[1, 10]");
     }
 }

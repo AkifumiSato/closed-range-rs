@@ -13,7 +13,6 @@ fn main() {
     }
 }
 
-// コマンドを表現するenum
 enum Command {
     // 単一の閉区間を表示する
     Display {
@@ -26,63 +25,73 @@ enum Command {
     },
     // 閉区間が別の閉区間のサブセットかチェックする
     Subset {
-        range1: ClosedRange,
-        range2: ClosedRange,
+        target: ClosedRange,    // サブセットかどうか判定される対象の閉区間
+        container: ClosedRange, // 包含する側の閉区間
     },
 }
 
 impl Command {
-    // コマンドラインからコマンドを解析する
     fn from_args(args: Vec<String>) -> Result<Self, String> {
         if args.len() < 3 {
-            return Err(format!(
-                "Usage: {} <lower> <upper> [c <value> | s <lower2> <upper2>]",
-                args[0]
-            ));
+            return Err("引数が不足しています。少なくとも2つの引数が必要です。".to_string());
         }
 
         // 最初の閉区間を作成
-        let lower = parse_int(&args[1])?;
-        let upper = parse_int(&args[2])?;
+        let lower =
+            parse_int(&args[1]).map_err(|_| format!("下限値として無効な整数です: {}", args[1]))?;
+        let upper =
+            parse_int(&args[2]).map_err(|_| format!("上限値として無効な整数です: {}", args[2]))?;
         let range = ClosedRange::new(lower, upper)?;
 
-        // 引数の数によってコマンドを決定
-        match args.len() {
-            // 最初の閉区間のみ (表示コマンド)
-            3 => Ok(Command::Display { range }),
-            
-            // 4引数以上の場合、3番目の引数によってコマンドを決定
-            _ if args.len() >= 5 && args[3] == "c" => {
-                let value = parse_int(&args[4])?;
+        // 追加の引数がない場合は表示コマンドのみ
+        if args.len() == 3 {
+            return Ok(Command::Display { range });
+        }
+
+        // 3番目の引数によってコマンドを決定
+        match args.get(3).map(String::as_str) {
+            Some("contains") if args.len() >= 5 => {
+                let value = parse_int(&args[4])
+                    .map_err(|_| format!("検査値として無効な整数です: {}", args[4]))?;
                 Ok(Command::Contains { range, value })
-            },
-            
-            _ if args.len() >= 6 && args[3] == "s" => {
-                let lower2 = parse_int(&args[4])?;
-                let upper2 = parse_int(&args[5])?;
-                let range2 = ClosedRange::new(lower2, upper2)?;
-                Ok(Command::Subset { range1: range, range2 })
-            },
-            
-            // その他の場合は最初の閉区間のみを表示
-            _ => Ok(Command::Display { range }),
+            }
+            Some("subset") if args.len() >= 6 => {
+                let lower2 = parse_int(&args[4])
+                    .map_err(|_| format!("2つ目の区間の下限値として無効な整数です: {}", args[4]))?;
+                let upper2 = parse_int(&args[5])
+                    .map_err(|_| format!("2つ目の区間の上限値として無効な整数です: {}", args[5]))?;
+                let container_range = ClosedRange::new(lower2, upper2)?;
+                Ok(Command::Subset {
+                    target: range,
+                    container: container_range,
+                })
+            }
+            // 引数が不正な場合
+            Some("contains") => Err("'c'コマンドには検査値が必要です。".to_string()),
+            Some("subset") => {
+                Err("'s'コマンドには2つ目の区間の下限値と上限値が必要です。".to_string())
+            }
+            Some(cmd) => Err(format!(
+                "未知のコマンド'{}'です。'contains'または'subset'を指定してください。",
+                cmd
+            )),
+            None => Err("区間の後にコマンドが指定されていません。".to_string()),
         }
     }
 
-    // コマンドを実行する
     fn execute(&self) {
         match self {
             Command::Display { range } => {
-                println!("range: {}", range);
-            },
+                println!("Range: {}", range);
+            }
             Command::Contains { range, value } => {
                 let contains = range.contains(*value);
                 println!("{} contains {}: {}", range, value, contains);
-            },
-            Command::Subset { range1, range2 } => {
-                let is_subset = range1.is_subset(range2);
-                println!("{} is subset of {}: {}", range1, range2, is_subset);
-            },
+            }
+            Command::Subset { target, container } => {
+                let is_subset = target.is_subset(container);
+                println!("{} is subset of {}: {}", target, container, is_subset);
+            }
         }
     }
 }
@@ -100,7 +109,7 @@ struct ClosedRange {
 impl ClosedRange {
     fn new(lower: i32, upper: i32) -> Result<Self, String> {
         if lower > upper {
-            return Err("Lower bound cannot be greater than upper bound".to_string());
+            return Err("下限値が上限値より大きいため、有効な閉区間ではありません".to_string());
         }
         Ok(ClosedRange { lower, upper })
     }
@@ -146,7 +155,10 @@ mod tests {
         // Assert
         assert!(result.is_err());
         let message = result.err().unwrap();
-        assert_eq!(message, "Lower bound cannot be greater than upper bound");
+        assert_eq!(
+            message,
+            "下限値が上限値より大きいため、有効な閉区間ではありません"
+        );
     }
 
     #[test]
@@ -182,19 +194,19 @@ mod tests {
     #[test]
     fn test_is_subset() {
         // Arrange
-        let range1 = ClosedRange::new(1, 10).unwrap();
-        let range2 = ClosedRange::new(1, 20).unwrap();
+        let target = ClosedRange::new(1, 10).unwrap();
+        let container = ClosedRange::new(1, 20).unwrap();
         // Act & Assert
-        assert!(range1.is_subset(&range2));
+        assert!(target.is_subset(&container));
     }
 
     #[test]
     fn test_is_not_subset() {
         // Arrange
-        let range1 = ClosedRange::new(1, 10).unwrap();
-        let range2 = ClosedRange::new(5, 15).unwrap();
+        let target = ClosedRange::new(1, 10).unwrap();
+        let container = ClosedRange::new(5, 15).unwrap();
         // Act & Assert
-        assert!(!range1.is_subset(&range2));
+        assert!(!target.is_subset(&container));
     }
 
     #[test]

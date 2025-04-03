@@ -1,35 +1,95 @@
 use std::env;
 use std::fmt;
-use std::process;
+use std::num::ParseIntError;
 
 fn main() {
-    // CLIから下限と上限の2引数を受け取る
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
-        eprintln!("Usage: {} <lower> <upper>", args[0]);
-        process::exit(1);
-    }
-    let lower: i32 = match args[1].parse() {
-        Ok(n) => n,
-        Err(_) => {
-            eprintln!("Invalid number: {}", args[1]);
-            process::exit(1);
-        }
-    };
-    let upper: i32 = match args[2].parse() {
-        Ok(n) => n,
-        Err(_) => {
-            eprintln!("Invalid number: {}", args[2]);
-            process::exit(1);
-        }
-    };
-    match ClosedRange::new(lower, upper) {
-        Ok(range) => println!("range: {}", range),
+    let args = env::args().collect();
+    match Command::from_args(args) {
+        Ok(command) => command.execute(),
         Err(e) => {
             eprintln!("Error: {}", e);
-            process::exit(1);
+            std::process::exit(1);
         }
     }
+}
+
+// コマンドを表現するenum
+enum Command {
+    // 単一の閉区間を表示する
+    Display {
+        range: ClosedRange,
+    },
+    // 値が閉区間に含まれるかチェックする
+    Contains {
+        range: ClosedRange,
+        value: i32,
+    },
+    // 閉区間が別の閉区間のサブセットかチェックする
+    Subset {
+        range1: ClosedRange,
+        range2: ClosedRange,
+    },
+}
+
+impl Command {
+    // コマンドラインからコマンドを解析する
+    fn from_args(args: Vec<String>) -> Result<Self, String> {
+        if args.len() < 3 {
+            return Err(format!(
+                "Usage: {} <lower> <upper> [c <value> | s <lower2> <upper2>]",
+                args[0]
+            ));
+        }
+
+        // 最初の閉区間を作成
+        let lower = parse_int(&args[1])?;
+        let upper = parse_int(&args[2])?;
+        let range = ClosedRange::new(lower, upper)?;
+
+        // 引数の数によってコマンドを決定
+        match args.len() {
+            // 最初の閉区間のみ (表示コマンド)
+            3 => Ok(Command::Display { range }),
+            
+            // 4引数以上の場合、3番目の引数によってコマンドを決定
+            _ if args.len() >= 5 && args[3] == "c" => {
+                let value = parse_int(&args[4])?;
+                Ok(Command::Contains { range, value })
+            },
+            
+            _ if args.len() >= 6 && args[3] == "s" => {
+                let lower2 = parse_int(&args[4])?;
+                let upper2 = parse_int(&args[5])?;
+                let range2 = ClosedRange::new(lower2, upper2)?;
+                Ok(Command::Subset { range1: range, range2 })
+            },
+            
+            // その他の場合は最初の閉区間のみを表示
+            _ => Ok(Command::Display { range }),
+        }
+    }
+
+    // コマンドを実行する
+    fn execute(&self) {
+        match self {
+            Command::Display { range } => {
+                println!("range: {}", range);
+            },
+            Command::Contains { range, value } => {
+                let contains = range.contains(*value);
+                println!("{} contains {}: {}", range, value, contains);
+            },
+            Command::Subset { range1, range2 } => {
+                let is_subset = range1.is_subset(range2);
+                println!("{} is subset of {}: {}", range1, range2, is_subset);
+            },
+        }
+    }
+}
+
+// 文字列から整数へのパースを行うヘルパー関数
+fn parse_int(s: &str) -> Result<i32, String> {
+    s.parse::<i32>().map_err(|e: ParseIntError| e.to_string())
 }
 
 struct ClosedRange {
